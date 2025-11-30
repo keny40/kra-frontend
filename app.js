@@ -1,107 +1,144 @@
-// ==========================================
-// Cloudflare Worker Proxy URL
-// ==========================================
-const PROXY = "https://kra-proxy.keny4000.workers.dev";
-const BACKEND = "https://kra-render-backend.onrender.com";
+// ===========================
+// Cloudflare Worker Proxy (단일 API)
+// ===========================
+const API_URL = "https://kra-proxy.keny4000.workers.dev";
 
-// Helper: 실제 호출 URL 구성
+// 실제 호출 URL
 function api(path) {
-    return `${PROXY}/?url=${encodeURIComponent(BACKEND + path)}`;
+    return `${API_URL}${path}`;
 }
 
-// ==========================================
-// 1) 경주 목록 로드
-// ==========================================
+// ===========================
+// 1) 경주 목록
+// ===========================
 async function loadRaces() {
     const raceList = document.getElementById("raceList");
     if (!raceList) return;
 
     try {
-        const res = await fetch(api("/races/"));
-        const races = await res.json();
+        const res = await fetch(api("/races"));
+        if (!res.ok) throw new Error("API 오류");
 
+        const races = await res.json();
         raceList.innerHTML = "";
 
-        races.forEach(r => {
-            raceList.append(raceCard(r));
-        });
+        races.forEach(r => raceList.append(raceCard(r)));
     } catch (e) {
-        console.error("경주 목록 오류:", e);
-        raceList.innerHTML = "<div class='error'>경주 목록을 불러올 수 없습니다.</div>";
+        raceList.innerHTML = "<p>경주 목록을 불러올 수 없습니다.</p>";
     }
 }
 
-// 경주 카드 렌더링
-function raceCard(r) {
-    const div = document.createElement("div");
-    div.className = "race-card";
-    div.innerHTML = `
-        <div class="race-title">${r.name}</div>
-        <div class="race-info">거리: ${r.distance}m</div>
-        <div class="race-info">출전: ${r.horses.length}마</div>
-        <button class="race-btn" onclick="openRace(${r.id})">상세보기</button>
-    `;
-    return div;
-}
-
-// 상세 페이지로 이동
-function openRace(id) {
-    window.location.href = `race.html?id=${id}`;
-}
-
-// ==========================================
-// 2) 경주 상세 + 예측 결과 로드
-// ==========================================
+// ===========================
+// 2) 경주 상세 + 예측 결과
+// ===========================
 async function loadRaceDetail() {
     const tbody = document.getElementById("horseRows");
     const titleEl = document.getElementById("raceTitle");
-    const predEl = document.getElementById("predictionResult");
-
     if (!tbody || !titleEl) return;
 
     const params = new URLSearchParams(window.location.search);
     const raceId = params.get("id");
 
+    // 경주 정보 가져오기
     try {
-        const res = await fetch(api(`/races/${raceId}`));
-        const data = await res.json();
-
-        // 제목
-        titleEl.innerText = `${data.name} (거리 ${data.distance}m)`;
-
-        // 말 목록
-        tbody.innerHTML = "";
-        data.horses.forEach(h => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${h.number}</td>
-                <td>${h.name}</td>
-                <td>${h.jockey}</td>
-                <td>${h.weight}</td>
-                <td>${h.record}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        // 예측
-        if (predEl) {
-            predEl.innerHTML = `
-                <div class="pred-title">AI 예측 결과</div>
-                <div class="pred-top">${data.prediction.top.join(", ")}</div>
-                <div class="pred-bottom">(상위 예상 순위)</div>
-            `;
+        const raceRes = await fetch(api(`/races/${raceId}`));
+        if (raceRes.ok) {
+            const r = await raceRes.json();
+            titleEl.innerText = `${r.title} — 예측 결과`;
+        } else {
+            titleEl.innerText = `경주 #${raceId} — 예측 결과`;
         }
+    } catch {
+        titleEl.innerText = `경주 #${raceId} — 예측 결과`;
+    }
 
-    } catch (e) {
-        console.error("상세 오류:", e);
-        tbody.innerHTML = "<tr><td colspan='5'>상세 불러오기 실패</td></tr>";
+    // 예측 결과
+    const predRes = await fetch(api(`/predict/${raceId}`));
+    const predData = await predRes.json();
+
+    tbody.innerHTML = "";
+    predData.horses.forEach(h => tbody.append(horseRow(h)));
+}
+
+// ===========================
+// 3) 회원가입
+// ===========================
+async function signup() {
+    const name = document.getElementById("name").value;
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    const res = await fetch(api("/auth/signup"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password })
+    });
+
+    const result = await res.json();
+    alert(result.message || "회원가입 완료 (관리자 승인 대기)");
+}
+
+// ===========================
+// 4) 로그인
+// ===========================
+async function login() {
+    const email = document.getElementById("email").value;
+    const pw = document.getElementById("password").value;
+
+    const res = await fetch(api("/auth/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: pw })
+    });
+
+    const result = await res.json();
+
+    if (res.ok) {
+        localStorage.setItem("access_token", result.access_token);
+        localStorage.setItem("user_name", result.user.name);
+        alert("로그인 성공");
+        window.location.href = "index.html";
+    } else {
+        alert(result.detail || "로그인 실패");
     }
 }
 
-// ==========================================
-// 공통: 페이지 진입 시 실행
-// ==========================================
-document.addEventListener("DOMContentLoaded", () => {
-    if (document.getElementById("raceList")) loadRaces();
-    if (document.getElementById("horseRows")) loadRaceDetail();
-});
+// ===========================
+// 5) 관리자 — 승인 대기 유저 목록
+// ===========================
+async function loadPendingUsers() {
+    const tbody = document.getElementById("pendingUsers");
+    if (!tbody) return;
+
+    const res = await fetch(api("/admin/pending"));
+    const users = await res.json();
+
+    tbody.innerHTML = "";
+
+    users.forEach(u => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${u.id}</td>
+            <td>${u.name}</td>
+            <td>${u.email}</td>
+            <td><button data-id="${u.id}">승인</button></td>
+        `;
+        tr.querySelector("button").onclick = () => approveUser(u.id);
+        tbody.append(tr);
+    });
+}
+
+// ===========================
+// 6) 관리자 — 유저 승인
+// ===========================
+async function approveUser(userId) {
+    const res = await fetch(api("/admin/approve"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId })
+    });
+
+    const result = await res.json();
+    alert(result.message || "승인 처리 완료");
+    loadPendingUsers();
+}
