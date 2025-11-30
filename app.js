@@ -39,6 +39,12 @@ async function loadRaceDetail() {
     const params = new URLSearchParams(window.location.search);
     const raceId = params.get("id");
 
+    // raceId가 null일 경우 방지
+    if (!raceId) {
+        titleEl.innerText = "경주 정보가 없습니다.";
+        return;
+    }
+
     // 경주 정보 가져오기
     try {
         const raceRes = await fetch(api(`/races/${raceId}`));
@@ -53,11 +59,15 @@ async function loadRaceDetail() {
     }
 
     // 예측 결과
-    const predRes = await fetch(api(`/predict/${raceId}`));
-    const predData = await predRes.json();
+    try {
+        const predRes = await fetch(api(`/predict/${raceId}`));
+        const predData = await predRes.json();
 
-    tbody.innerHTML = "";
-    predData.horses.forEach(h => tbody.append(horseRow(h)));
+        tbody.innerHTML = "";
+        predData.horses.forEach(h => tbody.append(horseRow(h)));
+    } catch (e) {
+        tbody.innerHTML = "<tr><td colspan='5'>예측 결과를 불러올 수 없습니다.</td></tr>";
+    }
 }
 
 // ===========================
@@ -110,22 +120,26 @@ async function loadPendingUsers() {
     const tbody = document.getElementById("pendingUsers");
     if (!tbody) return;
 
-    const res = await fetch(api("/admin/pending"));
-    const users = await res.json();
+    try {
+        const res = await fetch(api("/admin/pending"));
+        const users = await res.json();
 
-    tbody.innerHTML = "";
+        tbody.innerHTML = "";
 
-    users.forEach(u => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${u.id}</td>
-            <td>${u.name}</td>
-            <td>${u.email}</td>
-            <td><button data-id="${u.id}">승인</button></td>
-        `;
-        tr.querySelector("button").onclick = () => approveUser(u.id);
-        tbody.append(tr);
-    });
+        users.forEach(u => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${u.id}</td>
+                <td>${u.name}</td>
+                <td>${u.email}</td>
+                <td><button data-id="${u.id}">승인</button></td>
+            `;
+            tr.querySelector("button").onclick = () => approveUser(u.id);
+            tbody.append(tr);
+        });
+    } catch (e) {
+        tbody.innerHTML = "<tr><td colspan='4'>승인 대기 목록을 불러올 수 없습니다.</td></tr>";
+    }
 }
 
 // ===========================
@@ -141,4 +155,38 @@ async function approveUser(userId) {
     const result = await res.json();
     alert(result.message || "승인 처리 완료");
     loadPendingUsers();
+}
+
+// ===========================
+// 7) 경주 카드 생성 — 상세 페이지로 id 전달
+// ===========================
+function raceCard(r) {
+    const div = document.createElement("div");
+    div.className = "race-card";
+
+    div.innerHTML = `
+        <a href="race.html?id=${r.id}" class="race-link">
+            <div class="race-item">
+                <h3>${r.title}</h3>
+                <p>${r.date}</p>
+            </div>
+        </a>
+    `;
+
+    return div;
+}
+
+// ===========================
+// 8) 말 정보 표시
+// ===========================
+function horseRow(h) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+        <td>${h.number}</td>
+        <td>${h.name}</td>
+        <td>${h.jockey}</td>
+        <td>${h.win_rate}%</td>
+        <td>${h.place_rate}%</td>
+    `;
+    return tr;
 }
