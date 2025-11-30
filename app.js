@@ -1,192 +1,107 @@
-// ===========================
-// Cloudflare Worker Proxy (단일 API)
-// ===========================
-const API_URL = "https://kra-proxy.keny4000.workers.dev";
+// app.js — Render 백엔드 전용 완성본
+const API_URL = "https://kra-backend.onrender.com";
 
-// 실제 호출 URL
-function api(path) {
-    return `${API_URL}${path}`;
-}
-
-// ===========================
-// 1) 경주 목록
-// ===========================
+// =========================
+// 1) 오늘의 경주 불러오기
+// =========================
 async function loadRaces() {
     const raceList = document.getElementById("raceList");
     if (!raceList) return;
 
+    raceList.innerHTML = `<p>불러오는 중...</p>`;
+
     try {
-        const res = await fetch(api("/races"));
+        const res = await fetch(`${API_URL}/api/races`);
         if (!res.ok) throw new Error("API 오류");
 
         const races = await res.json();
+
+        if (!Array.isArray(races) || races.length === 0) {
+            raceList.innerHTML = `<p>경주 목록이 없습니다.</p>`;
+            return;
+        }
+
         raceList.innerHTML = "";
 
-        races.forEach(r => raceList.append(raceCard(r)));
-    } catch (e) {
-        raceList.innerHTML = "<p>경주 목록을 불러올 수 없습니다.</p>";
-    }
-}
-
-// ===========================
-// 2) 경주 상세 + 예측 결과
-// ===========================
-async function loadRaceDetail() {
-    const tbody = document.getElementById("horseRows");
-    const titleEl = document.getElementById("raceTitle");
-    if (!tbody || !titleEl) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const raceId = params.get("id");
-
-    // raceId가 null일 경우 방지
-    if (!raceId) {
-        titleEl.innerText = "경주 정보가 없습니다.";
-        return;
-    }
-
-    // 경주 정보 가져오기
-    try {
-        const raceRes = await fetch(api(`/races/${raceId}`));
-        if (raceRes.ok) {
-            const r = await raceRes.json();
-            titleEl.innerText = `${r.title} — 예측 결과`;
-        } else {
-            titleEl.innerText = `경주 #${raceId} — 예측 결과`;
-        }
-    } catch {
-        titleEl.innerText = `경주 #${raceId} — 예측 결과`;
-    }
-
-    // 예측 결과
-    try {
-        const predRes = await fetch(api(`/predict/${raceId}`));
-        const predData = await predRes.json();
-
-        tbody.innerHTML = "";
-        predData.horses.forEach(h => tbody.append(horseRow(h)));
-    } catch (e) {
-        tbody.innerHTML = "<tr><td colspan='5'>예측 결과를 불러올 수 없습니다.</td></tr>";
-    }
-}
-
-// ===========================
-// 3) 회원가입
-// ===========================
-async function signup() {
-    const name = document.getElementById("name").value;
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-
-    const res = await fetch(api("/auth/signup"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password })
-    });
-
-    const result = await res.json();
-    alert(result.message || "회원가입 완료 (관리자 승인 대기)");
-}
-
-// ===========================
-// 4) 로그인
-// ===========================
-async function login() {
-    const email = document.getElementById("email").value;
-    const pw = document.getElementById("password").value;
-
-    const res = await fetch(api("/auth/login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: pw })
-    });
-
-    const result = await res.json();
-
-    if (res.ok) {
-        localStorage.setItem("access_token", result.access_token);
-        localStorage.setItem("user_name", result.user.name);
-        alert("로그인 성공");
-        window.location.href = "index.html";
-    } else {
-        alert(result.detail || "로그인 실패");
-    }
-}
-
-// ===========================
-// 5) 관리자 — 승인 대기 유저 목록
-// ===========================
-async function loadPendingUsers() {
-    const tbody = document.getElementById("pendingUsers");
-    if (!tbody) return;
-
-    try {
-        const res = await fetch(api("/admin/pending"));
-        const users = await res.json();
-
-        tbody.innerHTML = "";
-
-        users.forEach(u => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${u.id}</td>
-                <td>${u.name}</td>
-                <td>${u.email}</td>
-                <td><button data-id="${u.id}">승인</button></td>
+        races.forEach(race => {
+            const item = document.createElement("div");
+            item.classList.add("race-item");
+            item.innerHTML = `
+                <h3>${race.title}</h3>
+                <p>시간: ${race.time}</p>
+                <button onclick="viewRace(${race.raceId})">자세히 보기</button>
             `;
-            tr.querySelector("button").onclick = () => approveUser(u.id);
-            tbody.append(tr);
+            raceList.appendChild(item);
         });
-    } catch (e) {
-        tbody.innerHTML = "<tr><td colspan='4'>승인 대기 목록을 불러올 수 없습니다.</td></tr>";
+    } catch (err) {
+        raceList.innerHTML = `<p>경주 목록을 불러올 수 없습니다.</p>`;
+        console.error(err);
     }
 }
 
-// ===========================
-// 6) 관리자 — 유저 승인
-// ===========================
-async function approveUser(userId) {
-    const res = await fetch(api("/admin/approve"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId })
-    });
-
-    const result = await res.json();
-    alert(result.message || "승인 처리 완료");
-    loadPendingUsers();
+// =========================
+// 2) 경주 상세 보기
+// =========================
+async function viewRace(raceId) {
+    window.location.href = `race.html?raceId=${raceId}`;
 }
 
-// ===========================
-// 7) 경주 카드 생성 — 상세 페이지로 id 전달
-// ===========================
-function raceCard(r) {
-    const div = document.createElement("div");
-    div.className = "race-card";
+async function loadRaceDetail() {
+    const params = new URLSearchParams(window.location.search);
+    const raceId = params.get("raceId");
 
-    div.innerHTML = `
-        <a href="race.html?id=${r.id}" class="race-link">
-            <div class="race-item">
-                <h3>${r.title}</h3>
-                <p>${r.date}</p>
-            </div>
-        </a>
-    `;
+    const detailBox = document.getElementById("raceDetail");
+    if (!detailBox) return;
 
-    return div;
+    detailBox.innerHTML = "불러오는 중...";
+
+    try {
+        const res = await fetch(`${API_URL}/api/races/${raceId}`);
+        const data = await res.json();
+
+        detailBox.innerHTML = `
+            <h2>${data.title}</h2>
+            <p>시간: ${data.time}</p>
+
+            <h3>출전마</h3>
+            ${data.horses
+                .map(h => `<p>${h.number}. ${h.name} (${h.jockey})</p>`)
+                .join("")}
+
+            <button onclick="predict(${raceId})">AI 예측 보기</button>
+        `;
+    } catch (err) {
+        detailBox.innerHTML = "불러올 수 없습니다.";
+    }
 }
 
-// ===========================
-// 8) 말 정보 표시
-// ===========================
-function horseRow(h) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-        <td>${h.number}</td>
-        <td>${h.name}</td>
-        <td>${h.jockey}</td>
-        <td>${h.win_rate}%</td>
-        <td>${h.place_rate}%</td>
-    `;
-    return tr;
+// =========================
+// 3) AI 예측 보기
+// =========================
+async function predict(raceId) {
+    const resultBox = document.getElementById("predictionResult");
+    if (!resultBox) return;
+
+    resultBox.innerHTML = "AI 분석 중...";
+
+    try {
+        const res = await fetch(`${API_URL}/api/races/${raceId}/predict`);
+        const data = await res.json();
+
+        resultBox.innerHTML = `
+            <h3>AI 예측 결과</h3>
+            <p>승리 예상 마번: <strong>${data.result}</strong></p>
+            <p>신뢰도: ${data.confidence}%</p>
+        `;
+    } catch (err) {
+        resultBox.innerHTML = "예측 실패";
+    }
 }
+
+// =========================
+// 4) 초기 실행
+// =========================
+document.addEventListener("DOMContentLoaded", () => {
+    loadRaces();
+    loadRaceDetail();
+});
