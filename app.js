@@ -1,9 +1,11 @@
 // app.js — Render 백엔드 전용 완성본
+
 const API_URL = "https://kra-backend.onrender.com";
 
-// =========================
+
+// ==============================
 // 1) 오늘의 경주 불러오기
-// =========================
+// ==============================
 async function loadRaces() {
     const raceList = document.getElementById("raceList");
     if (!raceList) return;
@@ -11,7 +13,8 @@ async function loadRaces() {
     raceList.innerHTML = `<p>불러오는 중...</p>`;
 
     try {
-        const res = await fetch(`${API_URL}/api/races`);
+        // ✔ A안 적용: /api/races → /races
+        const res = await fetch(`${API_URL}/races`);
         if (!res.ok) throw new Error("API 오류");
 
         const races = await res.json();
@@ -21,87 +24,78 @@ async function loadRaces() {
             return;
         }
 
-        raceList.innerHTML = "";
-
-        races.forEach(race => {
-            const item = document.createElement("div");
-            item.classList.add("race-item");
-            item.innerHTML = `
-                <h3>${race.title}</h3>
-                <p>시간: ${race.time}</p>
-                <button onclick="viewRace(${race.raceId})">자세히 보기</button>
-            `;
-            raceList.appendChild(item);
-        });
+        raceList.innerHTML = races
+            .map(
+                (r) => `
+                <div class="race-card">
+                    <h3>${r.race_date} — ${r.race_no}R</h3>
+                    <p>${r.title}</p>
+                    <button onclick="viewRace('${r.race_date}', '${r.race_no}')">
+                        상세 보기
+                    </button>
+                </div>
+            `
+            )
+            .join("");
     } catch (err) {
-        raceList.innerHTML = `<p>경주 목록을 불러올 수 없습니다.</p>`;
         console.error(err);
+        raceList.innerHTML = `<p>경주 목록을 불러올 수 없습니다.</p>`;
     }
 }
 
-// =========================
-// 2) 경주 상세 보기
-// =========================
-async function viewRace(raceId) {
-    window.location.href = `race.html?raceId=${raceId}`;
+
+// ==============================
+// 2) 경주 상세 페이지 이동
+// ==============================
+function viewRace(date, no) {
+    window.location.href = `race.html?date=${date}&no=${no}`;
 }
 
+
+// ==============================
+// 3) 레이스 상세 불러오기
+// ==============================
 async function loadRaceDetail() {
     const params = new URLSearchParams(window.location.search);
-    const raceId = params.get("raceId");
+    const date = params.get("date");
+    const no = params.get("no");
 
     const detailBox = document.getElementById("raceDetail");
     if (!detailBox) return;
 
-    detailBox.innerHTML = "불러오는 중...";
+    detailBox.innerHTML = `<p>불러오는 중...</p>`;
 
     try {
-        const res = await fetch(`${API_URL}/api/races/${raceId}`);
-        const data = await res.json();
+        // ✔ A안 적용: /api/races → /races
+        const res = await fetch(`${API_URL}/races`);
+        if (!res.ok) throw new Error("API 오류");
+
+        const races = await res.json();
+        const race = races.find((r) => r.race_date === date && r.race_no === no);
+
+        if (!race) {
+            detailBox.innerHTML = `<p>해당 경주 정보를 찾을 수 없습니다.</p>`;
+            return;
+        }
 
         detailBox.innerHTML = `
-            <h2>${data.title}</h2>
-            <p>시간: ${data.time}</p>
-
-            <h3>출전마</h3>
-            ${data.horses
-                .map(h => `<p>${h.number}. ${h.name} (${h.jockey})</p>`)
-                .join("")}
-
-            <button onclick="predict(${raceId})">AI 예측 보기</button>
+            <h2>${race.race_date} — ${race.race_no}R</h2>
+            <h3>${race.title}</h3>
+            <h4>출전마 정보</h4>
+            <pre>${JSON.stringify(race.horses, null, 2)}</pre>
         `;
+
     } catch (err) {
-        detailBox.innerHTML = "불러올 수 없습니다.";
+        console.error(err);
+        detailBox.innerHTML = `<p>경주 정보를 불러올 수 없습니다.</p>`;
     }
 }
 
-// =========================
-// 3) AI 예측 보기
-// =========================
-async function predict(raceId) {
-    const resultBox = document.getElementById("predictionResult");
-    if (!resultBox) return;
 
-    resultBox.innerHTML = "AI 분석 중...";
-
-    try {
-        const res = await fetch(`${API_URL}/api/races/${raceId}/predict`);
-        const data = await res.json();
-
-        resultBox.innerHTML = `
-            <h3>AI 예측 결과</h3>
-            <p>승리 예상 마번: <strong>${data.result}</strong></p>
-            <p>신뢰도: ${data.confidence}%</p>
-        `;
-    } catch (err) {
-        resultBox.innerHTML = "예측 실패";
-    }
-}
-
-// =========================
-// 4) 초기 실행
-// =========================
+// ==============================
+// 4) 페이지 로드 시 자동 실행
+// ==============================
 document.addEventListener("DOMContentLoaded", () => {
-    loadRaces();
-    loadRaceDetail();
+    if (document.getElementById("raceList")) loadRaces();
+    if (document.getElementById("raceDetail")) loadRaceDetail();
 });
